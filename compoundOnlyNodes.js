@@ -18,7 +18,7 @@ var elems = {
         {data: { id: 'g121', parent: 'g12'}}
 
     ],
-    edges: [
+    /*edges: [
         {data: { id: 'e0', source: 'A', target: 'C' }},
         {data: { id: 'e1', source: 'B', target: 'C' }},
         {data: { id: 'e2', source: 'D', target: 'g111' }},
@@ -29,7 +29,7 @@ var elems = {
         {data: { id: 'e7', source: 'g11', target: 'g12' }},
         {data: { id: 'e8', source: 'g11', target: 'g121' }},
         {data: { id: 'e9', source: 'F', target: 'g12' }},
-    ]
+    ]*/
 };
 
 var childrenData = new Map(); //サブグラフに含まれるノードを記録する
