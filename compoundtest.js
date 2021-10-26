@@ -87,11 +87,12 @@ var cy = cytoscape({
     var id = curNode.data('id');
     
     var childrenNodes = curNode.children();
-    var connectedChildEdges = curNode.children().connectedEdges();
+    var descendantsNodes = curNode.descendants().id();
+    var connectedChildEdges = curNode.descendants().connectedEdges();
     var connectedEdges = curNode.connectedEdges();
     var parentNode = nodes[x].data.parent;
     
-    childrenData.set(id, {node :childrenNodes, childEdge: connectedChildEdges, edge: connectedEdges, parent: parentNode, removed: false});
+    childrenData.set(id, {node :childrenNodes, desNode: descendantsNodes, childEdge: connectedChildEdges, edge: connectedEdges, parent: parentNode, removed: false});
   }
   console.log(childrenData)
   for(var x = 0; x < edges.length; x++){
@@ -100,7 +101,7 @@ var cy = cytoscape({
     var curSource = curEdge.source();
     var curTarget = curEdge.target();
 
-    edgesData.set(edges[x].data.id, {source: edges[x].data.source, target: edges[x].data.target, replaced: false});
+    edgesData.set(edges[x].data.id, {source: edges[x].data.source, target: edges[x].data.target});
     
   }
   console.log(edgesData)
@@ -120,50 +121,63 @@ cy.on('doubleTap', 'node', function(){ //フラグに応じて削除・復元
     var id = nodes.data('id')
 
     if(childrenData.get(id).removed == true){
-      childrenData.get(id).node.restore();
-      try{
-        childrenData.get(id).edge.restore();
-        childrenData.get(id).childEdge.restore();
-
-        
-
-        
-      }catch(error){
-        console.log(error.message)
-        var errlog = error.message.split('`');
-        var originID = errlog[1];
-        if(errlog[3]){
-          var nodeID = errlog[3];
-          var parentNode = childrenData.get(nodeID).parent;
-          if(error.message.match('target')){
-            cy.add([{group: 'edges', data:{id: originID, source: edgesData.get(originID).source, target: parentNode}}])
-            //edgesData.set('#' + originID, {source: edgesData.get(originID).source, target: parentNode});
-          }
-          else if(error.message.match('source')){
-            cy.add([{group: 'edges', data:{id: originID, source: parentNode, target: edgesData.get(originID).target}}])
-            //edgesData.set('#' + originID, {source: parentNode, target: edgesData.get(originID).target});
-          }
-          else{
-            console.log('なんかおかしい');
-          }
-          edgesData.get(originID).replaced = true;
-        }
-        else if(edgesData.get(originID).replaced){
-          cy.$('#' + elems.edges[0].data.id).remove();
-          childrenData.get(id).edge.restore();
-          childrenData.get(id).childEdge.restore();
-
-
-        }
-        
-      }
-        childrenData.get(id).removed = false;
+      restoreChildren(id, nodes, 0);
+      console.log(childrenData)
     } else{
         recursivelyRemove(id, nodes);
     }
 
 
 });
+
+function restoreChildren(id, nodes, loopBlock){
+  childrenData.get(id).node.restore();
+  try{
+    childrenData.get(id).edge.restore();
+    childrenData.get(id).childEdge.restore();
+  }catch(error){
+    console.log(error.message)
+    var errlog = error.message.split('`');
+    var originID = errlog[1];
+    if(errlog[3]){
+      console.log('err3')
+      var nodeID = errlog[3];
+      var parentNode = childrenData.get(nodeID).parent;
+
+      if(error.message.match('target')){
+        cy.add({group: 'edges', data:{id: originID, source: edgesData.get(originID).source, target: parentNode}})
+        console.log('create Edge ' + originID)
+      }
+      else if(error.message.match('source')){
+        try{
+        cy.add([{group: 'edges', data:{id: originID, source: parentNode, target: edgesData.get(originID).target}}])
+        console.log('create Edge ' + originID)
+        }catch(error){
+          console.log(error.message)
+          var errlog2 = error.message.split('`');
+          var nodeID2 = errlog2[3];
+          var parentNode2 = childrenData.get(nodeID2).parent;
+          cy.add({group: 'edges', data:{id: originID, source: parentNode, target: parentNode2}})
+        }
+      }
+      else{console.log('nanka okashii');}
+
+    }
+    else if(edgesData.get(originID).target != cy.$('#' + originID).target().id() || edgesData.get(originID).source != cy.$('#' + originID).source().id()){
+      console.log('err1')
+      
+      cy.remove('#' + originID);
+      console.log('remove Edge ' + originID)
+      if(loopBlock != originID){
+        loopBlock = originID;
+        restoreChildren(id, nodes, loopBlock);
+      }
+      else console.log('Loop Block')
+    }
+    else {console.log('nandaka okashii')}
+  }
+  childrenData.get(id).removed = false;
+}
 
 function recursivelyRemove(id,nodes){ //削除用
     var toRemove = [];
@@ -173,17 +187,28 @@ function recursivelyRemove(id,nodes){ //削除用
       nodes.forEach(function(node){
         childrenData.get(node.data('id')).removed = true;
       });
+
       
       Array.prototype.push.apply(toRemove, nodes.children());
         nodes = nodes.children();
         if( nodes.empty() ){ break; }
       }
-      
+
       for( var i = toRemove.length - 1; i >= 0; i-- ){
+        var ed = toRemove[i].connectedEdges();
+
+        for(var j = 0; j < ed.length; j++){
+          if(ed[j].target().parent() != ed[j].source().parent()){
+            var res = [ed[j], ed[j].id(), ed[j].source().id(), ed[j].target().id(), ed[j].source().parent().id(), ed[j].target().parent().id()];
+            ed[j].remove();
+            if(res[0].target() == toRemove[i])cy.add({group: 'edges', data:{id: res[1], source: res[2], target: res[5]}})
+            else if(res[0].source() == toRemove[i])cy.add({group: 'edges', data:{id: res[1], source: res[4], target: res[3]}})
+          }
+        }
+        
         toRemove[i].remove();
       }
+
     
-      
     }
-    
     
