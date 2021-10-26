@@ -130,6 +130,11 @@ cy.on('doubleTap', 'node', function(){ //フラグに応じて削除・復元
 
 });
 
+cy.on('doubleTap', 'edge', function(){
+    var edges = this;
+    edges.remove();
+}
+
 function restoreChildren(id, nodes, loopBlock){
   childrenData.get(id).node.restore();
   try{
