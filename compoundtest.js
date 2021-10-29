@@ -1,5 +1,3 @@
-
-
 var elems = {
     nodes: [
         {data: { id: 'A', parent: 'g111'}},
@@ -27,8 +25,9 @@ var elems = {
         {data: { id: 'e5', source: 'F', target: 'H' }},
         {data: { id: 'e6', source: 'G', target: 'E' }},
         {data: { id: 'e7', source: 'g11', target: 'g12' }},
-        {data: { id: 'e8', source: 'g11', target: 'g121' }},
+        {data: { id: 'e8', source: 'A', target: 'F' }},
         {data: { id: 'e9', source: 'F', target: 'g12' }},
+        {data: { id: 'e10', source: 'E', target: 'g1' }},
     ]
 };
 
@@ -54,7 +53,7 @@ var cy = cytoscape({
         css: {
                 'text-valign': 'top',
                 'text-halign': 'left',
-                'background-opacity': 0.333
+                'background-opacity': 0.25
               }
         },
         
@@ -92,13 +91,15 @@ var cy = cytoscape({
     var connectedChildEdges = curNode.descendants().connectedEdges(); //当ノードの子ノードに接続するエッジ
     var parentNode = nodes[x].data.parent; //当ノードの親ノード
     
+    if(childrenNodes.length > 0)curNode.css('shape', 'square'); //子ノードを持つノード(サブグラフ)は形を変更(閉じた際に反映されている)
+    
     childrenData.set(id, {node :childrenNodes, edge: connectedEdges.union(connectedChildEdges), parent: parentNode, removed: false});
   }
 
   for(var x = 0; x < edges.length; x++){ //初期状態での全エッジのソースとターゲットを記録
     edgesData.set(edges[x].data.id, {source: edges[x].data.source, target: edges[x].data.target});
   }
-
+  console.log(childrenData)
 
 
 var doubleClickDelayMs= 350; //ダブルクリックを認識する関数
@@ -132,84 +133,90 @@ function restoreChildren(id, nodes){ //ノードを開く
   childrenData.get(id).node.restore(); //子ノードを復元
 
   for(var x=0; x<childrenData.get(id).edge.length; x++){
-    try{
-      cy.add(childrenData.get(id).edge[x]) //ノードに関連するエッジを復元、ただしソースかターゲットが存在しない場合があるのでエラーを捕捉する
-      console.log(childrenData.get(id).edge[x].id() + ' : restore')
-      
-    }catch(error){
-      console.log(error.message)
-      var errlog = error.message.split('`'); //エラーメッセージから生成したいエッジを取得
-      var originID = errlog[1];
-      if(errlog[3]){ //ソースかターゲットが存在しない場合、errlog[3]が存在するエラーメッセージが得られる
-        console.log('err3')
-        var nodeID = errlog[3];
-        var parentNode = childrenData.get(nodeID).parent;
-        //削除されているソースかターゲットの親を取得し、エッジをそちらに置き換える
-        if(error.message.match('target')){
-          cy.add({group: 'edges', data:{id: originID, source: edgesData.get(originID).source, target: parentNode}})
-          console.log('create Edge ' + originID)
-        }
-        else if(error.message.match('source')){ //ソースもターゲットも存在しない場合にもこちらが実行される
-          try{
-            cy.add([{group: 'edges', data:{id: originID, source: parentNode, target: edgesData.get(originID).target}}])
-            console.log('create Edge ' + originID)
-          }catch(error){
-            console.log('err4')
-            console.log(error.message)
-            var errlog2 = error.message.split('`');
-            var nodeID2 = errlog2[3];
-            var parentNode2 = childrenData.get(nodeID2).parent;
-            //ソース、ターゲットが存在せず、両方の親が表示されている場合にはそれらを繋ぐエッジを生成する
-            if(parentNode!=parentNode2&&
-              !childrenData.get(childrenData.get(childrenData.get(nodeID).parent).parent).removed&&
-              !childrenData.get(childrenData.get(childrenData.get(nodeID2).parent).parent).removed){
-                cy.add({group: 'edges', data:{id: originID, source: parentNode, target: parentNode2}})
-                console.log('create Edge ' + originID)
-              }
-            }
-            
-        }
-        else{console.log('nanka okashii');}    
-      }
-      else if(edgesData.get(originID).target != cy.$('#' + originID).target().id() || edgesData.get(originID).source != cy.$('#' + originID).source().id()){
+
+    var restoreEdge = childrenData.get(id).edge[x]; //関連するエッジを1つずつ復元する
+    var restoreEdgeID = childrenData.get(id).edge[x].id(); //復元エッジのID
+
+    if(cy.$('#' + restoreEdgeID).target() != undefined && cy.$('#' + restoreEdgeID).source() != undefined){
+      if(edgesData.get(restoreEdgeID).target != cy.$('#' + restoreEdgeID).target().id() || edgesData.get(restoreEdgeID).source != cy.$('#' + restoreEdgeID).source().id()){
         //idが重複するエッジを生成しようとした場合に、当該エッジが初期状態と異なる状態であれば実行される
         console.log('err1')
-        
-        cy.remove('#' + originID);
-        console.log('remove Edge ' + originID)
-        x--;
+      
+        cy.remove('#' + restoreEdgeID); //重複している現存エッジを消去する
+        console.log('remove Edge ' + restoreEdgeID)
+        x--; //ループ変数を減らしもう一度同じエッジの追加を行う
       }
-      else {console.log('nandaka okashii')}
+    }
+    else if(cy.$(restoreEdge.source()).length * cy.$(restoreEdge.target()).length == 0 ){ //復元エッジの両端どちらかが表示されていない場合、lengthが0になる
+      console.log('err2')
+      var newSource = edgesData.get(restoreEdgeID).source; //復元エッジのソース、ターゲットを取得
+      var newTarget = edgesData.get(restoreEdgeID).target;
+      var sFlag = (childrenData.get(childrenData.get(newSource).parent) == undefined ? false : childrenData.get(childrenData.get(newSource).parent).removed); 
+      var tFlag = (childrenData.get(childrenData.get(newTarget).parent) == undefined ? false : childrenData.get(childrenData.get(newTarget).parent).removed); 
+      //ソース、ターゲットの親のremoveを取得
+      //removeがfalseであればnewソース、ターゲットは表示されている
+      //ただし、初期状態から最上部のサブグラフを指していたエッジなどは親を読み込めないので三項演算子で弾く
+
+      while(sFlag || tFlag){
+        if(sFlag){ //親が閉じられているなら復元エッジのソースをその親に置き換え、更にその親のremoveを取得
+          //親が表示されているノード(removeがfalseであるサブグラフ)が得られるまで登り続ける
+          newSource = childrenData.get(newSource).parent;
+          sFlag = childrenData.get(childrenData.get(newSource).parent).removed;
+        }
+        
+        if(tFlag){
+          newTarget = childrenData.get(newTarget).parent;
+          tFlag = childrenData.get(childrenData.get(newTarget).parent).removed;
+        }
+
+      }
+      if(newSource!=newTarget){ //自己ループにならないならエッジを追加
+        cy.add({group: 'edges', data:{id: restoreEdgeID, source: newSource, target: newTarget}})
+        console.log('create Edge ' + restoreEdgeID)
+      }
+    }
+    else{
+      cy.add(childrenData.get(id).edge[x]) //ノードに関連するエッジを復元、ただしソースかターゲットが存在しない場合があるのでエラーを捕捉する
+      console.log(childrenData.get(id).edge[x].id() + ' : restore')
     }
   }
-
 }
 
 function recursivelyRemove(id,nodes){ //ノードを閉じる
   var toRemove = [];
 
   for(;;){
-    nodes.forEach(function(node){
+    nodes.forEach(function(node){ //選択されたノードと子のremoveフラグを全てtrueにする
       childrenData.get(node.data('id')).removed = true;
     });
 
-    Array.prototype.push.apply(toRemove, nodes.children());
+    Array.prototype.push.apply(toRemove, nodes.children()); //削除する全ての子ノードをプッシュ
       nodes = nodes.children();
       if( nodes.empty() ){ break; }
     }
 
-  for( var i = toRemove.length - 1; i >= 0; i-- ){ //サブグラフを跨ぐエッジを削除した場合、置き換える
+  for( var i = toRemove.length - 1; i >= 0; i-- ){ //当該サブグラフに関連するエッジ全てを一度削除する
     var remEdge = toRemove[i].connectedEdges();
     for(var j = 0; j < remEdge.length; j++){
-      if(remEdge[j].target().parent() != remEdge[j].source().parent()){
-        var replaceEdge = [remEdge[j], remEdge[j].id(), remEdge[j].source().id(), remEdge[j].target().id(), remEdge[j].source().parent().id(), remEdge[j].target().parent().id()];
+      if(remEdge[j].target().parent() != remEdge[j].source().parent()){ //他のサブグラフを跨ぐエッジ(ソースとターゲットの親が別のエッジ)は置き換える
+        var replaceEdge = remEdge[j]; //removeを行うエッジ(remEdge[j])はremove後は参照できないので別の変数に記録する
         remEdge[j].remove();
-        if(replaceEdge[0].target() == toRemove[i])cy.add({group: 'edges', data:{id: replaceEdge[1], source: replaceEdge[2], target: replaceEdge[5]}})
-        else if(replaceEdge[0].source() == toRemove[i])cy.add({group: 'edges', data:{id: replaceEdge[1], source: replaceEdge[4], target: replaceEdge[3]}})
-      }
-    }
-    
+
+        var newSource; //ソース、ターゲットのうち削除される方は親に置き換える
+        var newTarget;
+        if(replaceEdge.target() == toRemove[i]){
+          newSource = replaceEdge.source().id();
+          newTarget = replaceEdge.target().parent().id();
+        }
+        else if(replaceEdge.source() == toRemove[i]){
+          newSource = replaceEdge.source().parent().id();
+          newTarget = replaceEdge.target().id();
+        }
+        if(newSource != newTarget)cy.add({group: 'edges', data:{id: replaceEdge.id(), source: newSource, target: newTarget}})
+      } //親しか参照してないけど何故か孫以下も丸ごと削除しても、ちゃんと表示されてる一番上の親に置き換わる
+    }  //最下層から順に消してて、都度1段ずつ上に置き換えられてるのかしら　よくわかんないです
     toRemove[i].remove();
   }
+
 }
     
