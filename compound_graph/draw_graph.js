@@ -7,8 +7,6 @@ $(function(){
     $.when(
         $.getJSON('./graph_attrs/compound_dot_graph.json'),
         $.getJSON('./graph_attrs/mml_classification.json')
-        //$.getScript("./compound_dot_graph_json.js"),
-        //$.getScript("./mml_classification_json.js")
     )
     .then((dot_graph, classification) => {
         // cytoscapeグラフの作成(初期化)
@@ -21,7 +19,7 @@ $(function(){
             wheelSensitivity: 0.1
         });
 
-        console.log(classification[0])
+        console.log(classification)
         cy.add(dot_graph["eleObjs"]);
         // Set graph style
         cy.style([
